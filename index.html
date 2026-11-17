@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Peta GeoServer</title>
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""
+    >
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            margin: 1rem;
+        }
+
+        #map {
+            height: calc(100vh - 4rem);
+            min-height: 400px;
+        }
+
+        .map-legend {
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+            max-height: 55vh;
+            max-width: 280px;
+            overflow: auto;
+            padding: 10px;
+        }
+
+        .map-legend h3 {
+            font-size: 1rem;
+            margin: 0 0 8px;
+        }
+
+        .map-legend h4 {
+            font-size: 0.875rem;
+            margin: 8px 0 4px;
+        }
+
+        .map-legend section + section {
+            border-top: 1px solid #ddd;
+        }
+
+        .map-legend img {
+            display: block;
+            height: auto;
+            max-width: 100%;
+        }
+
+        .legend-image-crop {
+            overflow: hidden;
+        }
+
+        .map-legend p {
+            font-size: 0.8rem;
+            margin: 4px 0 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Peta GeoServer</h1>
+    <div id="map" aria-label="Peta GeoServer"></div>
+
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""
+    ></script>
+    <script src="https://cdn.jsdelivr.net/gh/iamtekson/Leaflet-from-basic-to-advance@f4bb9638205959fa52a90e8eb18344cc7b38f390/geoserver/lib/L.Geoserver.js"></script>
+    <script>
+        const config = {
+            wmsUrl: 'http://localhost:8080/geoserver/wms',
+            layers: {
+                Toponimi: 'PGW11_Luhur:Wonoso_Toponimi',
+                Jalan: 'PGW11_Luhur:Wonoso_Jalan',
+                Desa: 'PGW11_Luhur:Wonosobo_Desa'
+            }
+        };
+        const map = L.map('map');
+        map.fitBounds([
+            [-7.39534712, 109.8871994],
+            [-7.32183695, 109.97121429]
+        ], { padding: [20, 20] });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const overlays = {};
+        const layerEntries = Object.entries(config.layers);
+        const layerPanes = ['toponimiPane', 'jalanPane', 'desaPane'];
+        const layerZIndices = [430, 420, 410];
+        layerEntries.forEach(([label, layerName], index) => {
+            const paneName = layerPanes[index];
+            map.createPane(paneName).style.zIndex = layerZIndices[index];
+
+            const layer = L.Geoserver.wms(config.wmsUrl, {
+                layers: layerName,
+                format: 'image/png',
+                transparent: true,
+                version: '1.1.1',
+                pane: paneName
+            }).addTo(map);
+
+            overlays[label] = layer;
+        });
+
+        L.control.layers(null, overlays).addTo(map);
+
+        const legendControl = L.control({ position: 'bottomleft' });
+        legendControl.onAdd = function () {
+            const container = L.DomUtil.create('div', 'map-legend');
+            const title = document.createElement('h3');
+            title.textContent = 'Legenda';
+            container.appendChild(title);
+
+            layerEntries.forEach(([label, layerName]) => {
+                const section = document.createElement('section');
+                const heading = document.createElement('h4');
+                heading.textContent = label;
+                section.appendChild(heading);
+
+                const image = document.createElement('img');
+                image.alt = 'Legenda ' + label;
+                const imageCrop = document.createElement('div');
+                imageCrop.className = 'legend-image-crop';
+                imageCrop.appendChild(image);
+                section.appendChild(imageCrop);
+
+                image.addEventListener('load', () => {
+                    const lastClassHeight = 21;
+                    imageCrop.style.height = Math.max(
+                        0,
+                        image.getBoundingClientRect().height - lastClassHeight
+                    ) + 'px';
+                }, { once: true });
+
+                const legendUrl = new URL(config.wmsUrl);
+                legendUrl.searchParams.set('service', 'WMS');
+                legendUrl.searchParams.set('version', '1.1.1');
+                legendUrl.searchParams.set('request', 'GetLegendGraphic');
+                legendUrl.searchParams.set('format', 'image/png');
+                legendUrl.searchParams.set('layer', layerName);
+                image.src = legendUrl.toString();
+                image.addEventListener('error', () => {
+                    const message = document.createElement('p');
+                    message.textContent = 'Legenda tidak tersedia di GeoServer.';
+                    imageCrop.replaceWith(message);
+                }, { once: true });
+
+                container.appendChild(section);
+            });
+
+            return container;
+        };
+        legendControl.addTo(map);
+    </script>
+</body>
+</html>
